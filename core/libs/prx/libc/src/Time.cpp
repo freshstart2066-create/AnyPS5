@@ -22,6 +22,15 @@ constexpr const char* MONTH_NAMES[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
 constexpr std::size_t ASCTIME_SIZE = sizeof("Sun Jan-2147483648 -2147483648:-2147483648:-2147483648 -2147483648\n");
 constexpr std::int64_t SECONDS_PER_DAY = 86400;
 constexpr std::int64_t DAYS_FROM_MARCH_TO_YEAR_END = 306;
+#ifdef _WIN32
+constexpr std::int64_t CALENDAR_CYCLE_YEARS = 400;
+constexpr std::int64_t CALENDAR_CYCLE_SECONDS = 146097 * SECONDS_PER_DAY;
+constexpr std::int64_t HOST_LAST_SECOND = 32535215999;
+
+std::int64_t calendarCycles(std::int64_t value, std::int64_t cycle) {
+    return value >= 0 ? value / cycle : -((-(value + 1)) / cycle + 1);
+}
+#endif
 
 void copyCalendarFields(const std::tm& host, GuestTm& guest) {
     guest.tm_sec = host.tm_sec;
@@ -274,10 +283,17 @@ GuestTm* APS5_VABI localtime_nid_postfix(const int64_t* timer) {
 
 GuestTm* APS5_VABI localtime_s_nid_postfix(const int64_t* timer, GuestTm* result) {
     if (timer == nullptr || result == nullptr) return nullptr;
-    const std::time_t t = static_cast<std::time_t>(*timer);
     std::tm host{};
 #ifdef _WIN32
+    const std::int64_t cycles = *timer >= 0 && *timer <= HOST_LAST_SECOND ? 0 : calendarCycles(*timer, CALENDAR_CYCLE_SECONDS);
+    const std::time_t t = static_cast<std::time_t>(*timer - cycles * CALENDAR_CYCLE_SECONDS);
     if (localtime_s(&host, &t) != 0) return nullptr;
+    const std::int64_t year = host.tm_year + cycles * CALENDAR_CYCLE_YEARS;
+    if (year < std::numeric_limits<int>::min() || year > std::numeric_limits<int>::max()) {
+        errno = EINVAL;
+        return nullptr;
+    }
+    host.tm_year = static_cast<int>(year);
     copyCalendarFields(host, *result);
     long standardBias = 0;
     long daylightBias = 0;
@@ -287,6 +303,7 @@ GuestTm* APS5_VABI localtime_s_nid_postfix(const int64_t* timer, GuestTm* result
     result->tm_gmtoff = -static_cast<std::int64_t>(standardBias + (daylight ? daylightBias : 0));
     result->tm_zone = _tzname[daylight ? 1 : 0];
 #else
+    const std::time_t t = static_cast<std::time_t>(*timer);
     if (localtime_r(&t, &host) == nullptr) return nullptr;
     copyCalendarFields(host, *result);
     result->tm_gmtoff = host.tm_gmtoff;
@@ -310,9 +327,22 @@ GuestTm* APS5_VABI gmtime_nid_postfix(const int64_t* timer) {
 int64_t APS5_VABI libc_mktime_nid_postfix(GuestTm* timeptr) {
     std::tm host = toHostTm(*timeptr);
     host.tm_wday = -1;
-    const std::time_t t = std::mktime(&host);
+    const int previous = errno;
+    std::time_t t = std::mktime(&host);
+    int64_t moved = 0;
+#ifdef _WIN32
+    for (int earlier = 0; earlier < 2 && t == static_cast<std::time_t>(-1) && host.tm_wday == -1; ++earlier) {
+        const std::int64_t cycles = calendarCycles(static_cast<std::int64_t>(timeptr->tm_year) - 70, CALENDAR_CYCLE_YEARS) - earlier;
+        host = toHostTm(*timeptr);
+        host.tm_wday = -1;
+        host.tm_year = static_cast<int>(host.tm_year - cycles * CALENDAR_CYCLE_YEARS);
+        t = std::mktime(&host);
+        moved = cycles * CALENDAR_CYCLE_SECONDS;
+    }
+#endif
     if (t == static_cast<std::time_t>(-1) && host.tm_wday == -1) return -1;
-    const int64_t time = static_cast<int64_t>(t);
+    if (moved != 0) errno = previous;
+    const int64_t time = static_cast<int64_t>(t) + moved;
     localtime_s_nid_postfix(&time, timeptr);
     return time;
 }
