@@ -108,6 +108,9 @@ int main() {
     Require(pipe_nid_postfix(pipes) == 0);
     for (const int pipe : pipes) {
         Require(isatty_nid_postfix(pipe) == 0 && *__error_nid_postfix() == 25);
+        Require(lseek_nid_postfix(pipe, 0, 0) == -1 && *__error_nid_postfix() == 29);
+        Require(lseek_nid_postfix(pipe, 5, 1) == -1 && *__error_nid_postfix() == 29);
+        Require(lseek_nid_postfix(pipe, 0, 2) == -1 && *__error_nid_postfix() == 29);
         Require(close_nid_postfix(pipe) == 0);
     }
     const int socket = socket_nid_postfix(2, 2, 0);
