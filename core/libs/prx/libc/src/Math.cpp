@@ -200,6 +200,10 @@ double APS5_VABI fabs_nid_postfix(double x) { return std::fabs(x); }
 int APS5_VABI abs_nid_postfix(int x) { return x < 0 ? static_cast<int>(0u - static_cast<unsigned>(x)) : x; }
 double APS5_VABI trunc_nid_postfix(double x) { return std::trunc(x); }
 double APS5_VABI ceil_nid_postfix(double x) { return std::ceil(x); }
+double APS5_VABI fmin_nid_postfix(double x, double y) { return std::fmin(x, y); }
+float APS5_VABI fminf_nid_postfix(float x, float y) { return std::fmin(x, y); }
+double APS5_VABI fmax_nid_postfix(double x, double y) { return std::fmax(x, y); }
+float APS5_VABI fmaxf_nid_postfix(float x, float y) { return std::fmax(x, y); }
 double APS5_VABI fma_nid_postfix(double x, double y, double z) { return std::fma(x, y, z); }
 long double APS5_VABI acosl_nid_postfix(long double x) { return std::acos(x); }
 
